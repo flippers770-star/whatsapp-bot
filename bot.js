@@ -1,16 +1,15 @@
 /**
- * WhatsApp Business API Bot - נעלי בית
+ * WhatsApp Bot - Twilio version
+ * חנות נעלי בית - Feet Fun Slippers
  */
 
 const express = require("express");
 const axios = require("axios");
 const app = express();
+app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
 
 const CONFIG = {
-  WA_TOKEN: process.env.WA_TOKEN,
-  WA_PHONE_ID: process.env.WA_PHONE_ID,
-  WA_VERIFY_TOKEN: process.env.WA_VERIFY_TOKEN || "my_secret_token",
   WC_URL: process.env.WC_URL,
   WC_KEY: process.env.WC_KEY,
   WC_SECRET: process.env.WC_SECRET,
@@ -80,13 +79,13 @@ async function handleMessage(phone, text) {
 
   if (greetings.some(w => msg.toLowerCase().includes(w)) || msg === "0") {
     session.step = "main";
-    return `שלום! 👋 ברוך הבא לחנות נעלי הבית שלנו 🩴\n\nאיך אני יכול לעזור?\n\n1️⃣ בדיקת סטטוס הזמנה\n2️⃣ מוצרים וגדלים\n3️⃣ מחירים ומבצעים\n4️⃣ החזרות והחלפות\n5️⃣ דיבור עם נציג אנושי\n\n_שלח את המספר הרצוי_`;
+    return `שלום! 👋 ברוך הבא לחנות נעלי הבית שלנו 🩴\n\nאיך אני יכול לעזור?\n\n1️⃣ בדיקת סטטוס הזמנה\n2️⃣ מוצרים וגדלים\n3️⃣ מחירים ומבצעים\n4️⃣ החזרות והחלפות\n5️⃣ דיבור עם נציג אנושי\n\nשלח את המספר הרצוי`;
   }
 
   if (msg === "1" || session.step === "await_order_id") {
     if (session.step !== "await_order_id") {
       session.step = "await_order_id";
-      return "בשמחה! 📦 מה מספר ההזמנה שלך?\n_(תוכל למצוא אותו במייל האישור)_";
+      return "בשמחה! 📦 מה מספר ההזמנה שלך?\n(תוכל למצוא אותו במייל האישור)";
     }
     const orderId = msg.replace(/[^0-9]/g, "");
     if (!orderId) return "אנא שלח מספר הזמנה תקין (מספרים בלבד).";
@@ -97,7 +96,7 @@ async function handleMessage(phone, text) {
   if (msg === "2" || session.step === "await_product_search") {
     if (session.step !== "await_product_search") {
       session.step = "await_product_search";
-      return `👟 *מוצרים וגדלים*\n\nמה אתה מחפש?\n• שם מוצר ספציפי\n• גודל (לדוגמה: *42*)\n• *הכל* לכל הקטלוג`;
+      return `👟 *מוצרים וגדלים*\n\nמה אתה מחפש?\n• שם מוצר ספציפי\n• גודל (לדוגמה: 42)\n• הכל לכל הקטלוג`;
     }
     session.step = "main";
     return await getProducts(msg === "הכל" ? "" : msg);
@@ -111,37 +110,28 @@ async function handleMessage(phone, text) {
 
   if (msg === "5") {
     session.step = "main";
-    return `👨‍💼 *העברה לנציג*\n\nמיד יצרו איתך קשר!\n⏰ שעות פעילות: א׳-ה׳ 9:00-18:00\n\n_מחוץ לשעות הפעילות? נחזור אליך בבוקר_`;
+    return `👨‍💼 *העברה לנציג*\n\nמיד יצרו איתך קשר!\n⏰ שעות פעילות: א׳-ה׳ 9:00-18:00\n\nמחוץ לשעות הפעילות? נחזור אליך בבוקר`;
   }
 
-  return `לא הבנתי 😊 אנא בחר מהתפריט:\n\n1️⃣ סטטוס הזמנה\n2️⃣ מוצרים וגדלים\n3️⃣ מחירים ומבצעים\n4️⃣ החזרות והחלפות\n5️⃣ דיבור עם נציג\n\n_שלח 0 לתפריט הראשי_`;
+  return `לא הבנתי 😊\n\n1️⃣ סטטוס הזמנה\n2️⃣ מוצרים וגדלים\n3️⃣ מבצעים\n4️⃣ החזרות\n5️⃣ נציג\n\nשלח 0 לתפריט`;
 }
 
-async function sendWhatsApp(to, body) {
-  await axios.post(
-    `https://graph.facebook.com/v19.0/${CONFIG.WA_PHONE_ID}/messages`,
-    { messaging_product: "whatsapp", to, type: "text", text: { body } },
-    { headers: { Authorization: `Bearer ${CONFIG.WA_TOKEN}` } }
-  );
-}
-
-app.get("/webhook", (req, res) => {
-  const { "hub.mode": mode, "hub.verify_token": token, "hub.challenge": challenge } = req.query;
-  if (mode === "subscribe" && token === CONFIG.WA_VERIFY_TOKEN) return res.status(200).send(challenge);
-  res.sendStatus(403);
-});
-
+// Twilio Webhook
 app.post("/webhook", async (req, res) => {
-  res.sendStatus(200);
-  const entry = req.body?.entry?.[0]?.changes?.[0]?.value;
-  if (!entry?.messages) return;
-  const msg = entry.messages[0];
-  if (msg.type !== "text") return;
-  const phone = msg.from;
-  const text = msg.text.body;
+  const phone = req.body.From;
+  const text = req.body.Body;
   console.log(`📩 [${phone}]: ${text}`);
+
   const reply = await handleMessage(phone, text);
-  await sendWhatsApp(phone, reply);
+
+  // Twilio expects TwiML XML response
+  res.set("Content-Type", "text/xml");
+  res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Message>${reply}</Message>
+</Response>`);
 });
+
+app.get("/", (req, res) => res.send("Bot is running! 🚀"));
 
 app.listen(CONFIG.PORT, () => console.log(`🚀 Bot running on port ${CONFIG.PORT}`));
