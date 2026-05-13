@@ -32,7 +32,7 @@ async function sendAlertToOwner(customerPhone, message) {
     await client.messages.create({
       from: CONFIG.TWILIO_WHATSAPP_NUMBER,
       to: `whatsapp:${CONFIG.OWNER_PHONE}`,
-      body: `🔔 *לקוח מבקש נציג!*\n\n📱 מספר: ${customerPhone}\n💬 הודעה: ${message}\n\nענה ללקוח ישירות בוואטסאפ!`
+      body: `🔔 *לקוח מבקש נציג!*\n\n📱 מספר: ${customerPhone}\n💬 הודעה: ${message}\n\nענה ללקוח ישירות בוואטסאפ!`,
     });
   } catch (e) {
     console.error("Failed to send alert:", e.message);
@@ -43,10 +43,14 @@ async function getOrderStatus(orderId) {
   try {
     const { data } = await wooApi.get(`/orders/${orderId}`);
     const statusMap = {
-      pending: "ממתינה לתשלום ⏳", processing: "בעיבוד 🔄",
-      on_hold: "בהמתנה ⏸️", completed: "הושלמה ✅",
-      cancelled: "בוטלה ❌", refunded: "הוחזרה 💸",
-      failed: "נכשלה ❗", shipped: "נשלחה 🚚",
+      pending: "ממתינה לתשלום ⏳",
+      processing: "בעיבוד 🔄",
+      on_hold: "בהמתנה ⏸️",
+      completed: "הושלמה ✅",
+      cancelled: "בוטלה ❌",
+      refunded: "הוחזרה 💸",
+      failed: "נכשלה ❗",
+      shipped: "נשלחה 🚚",
     };
     const status = statusMap[data.status] || data.status;
     const name = `${data.billing.first_name} ${data.billing.last_name}`;
@@ -75,9 +79,13 @@ async function getProducts(search = "") {
 
 async function getSaleProducts() {
   try {
-    const { data } = await wooApi.get("/products", { params: { on_sale: true, per_page: 5, status: "publish" } });
+    const { data } = await wooApi.get("/products", {
+      params: { on_sale: true, per_page: 5, status: "publish" },
+    });
     if (!data.length) return "אין מבצעים פעילים כרגע 😊 תבדוק שוב בקרוב!";
-    const lines = data.map((p) => `🔥 *${p.name}*\n   במקום ₪${p.regular_price} → ₪${p.sale_price}`);
+    const lines = data.map(
+      (p) => `🔥 *${p.name}*\n   במקום ₪${p.regular_price} → ₪${p.sale_price}`
+    );
     return `🎉 *המבצעים שלנו:*\n\n${lines.join("\n\n")}`;
   } catch (e) {
     return "לא הצלחתי לשלוף מבצעים כרגע.";
@@ -90,16 +98,28 @@ function getSession(phone) {
   return sessions[phone];
 }
 
+const MENU_OPTIONS = ["1", "2", "3", "4", "5"];
+
 async function handleMessage(phone, text) {
   const session = getSession(phone);
   const msg = text.trim();
-  const greetings = ["היי","שלום","הי","hello","hi","מה נשמע","בוקר טוב","ערב טוב"];
+  const greetings = ["היי", "שלום", "הי", "hello", "hi", "מה נשמע", "בוקר טוב", "ערב טוב"];
 
-  if (greetings.some(w => msg.toLowerCase().includes(w)) || msg === "0") {
+  // ברכות ותפריט ראשי
+  if (greetings.some((w) => msg.toLowerCase().includes(w)) || msg === "0") {
     session.step = "main";
     return `שלום! 👋 ברוך הבא לחנות נעלי הבית שלנו 🩴\n\nאיך אני יכול לעזור?\n\n1️⃣ בדיקת סטטוס הזמנה\n2️⃣ מוצרים וגדלים\n3️⃣ מחירים ומבצעים\n4️⃣ החזרות והחלפות\n5️⃣ דיבור עם נציג אנושי\n\nשלח את המספר הרצוי`;
   }
 
+  // ✅ תיקון: זיהוי חכם של מספר הזמנה
+  // אם ההודעה היא מספר של 4+ ספרות ולא אחת מאפשרויות התפריט - כנראה מספר הזמנה
+  const isOrderNumber = /^\d{4,}$/.test(msg) && !MENU_OPTIONS.includes(msg);
+  if (isOrderNumber) {
+    session.step = "main";
+    return await getOrderStatus(msg);
+  }
+
+  // בדיקת סטטוס הזמנה - תפריט
   if (msg === "1" || session.step === "await_order_id") {
     if (session.step !== "await_order_id") {
       session.step = "await_order_id";
@@ -111,6 +131,7 @@ async function handleMessage(phone, text) {
     return await getOrderStatus(orderId);
   }
 
+  // מוצרים וגדלים
   if (msg === "2" || session.step === "await_product_search") {
     if (session.step !== "await_product_search") {
       session.step = "await_product_search";
@@ -120,12 +141,15 @@ async function handleMessage(phone, text) {
     return await getProducts(msg === "הכל" ? "" : msg);
   }
 
+  // מבצעים
   if (msg === "3") return await getSaleProducts();
 
+  // החזרות והחלפות
   if (msg === "4") {
     return `↩️ *מדיניות החזרות והחלפות*\n\n✅ ניתן להחזיר תוך *14 יום* מקבלת המוצר\n✅ המוצר חייב להיות שלם ולא בשימוש\n✅ עם חשבונית / אישור הזמנה\n\n📬 *תהליך:*\n1. שלח תמונה של המוצר\n2. ציין מספר הזמנה וסיבת ההחזרה\n3. נחזור אליך תוך 24 שעות\n\n📞 לשאלות: שלח *5* לנציג`;
   }
 
+  // נציג אנושי
   if (msg === "5") {
     session.step = "main";
     await sendAlertToOwner(phone, text);
@@ -141,7 +165,9 @@ app.post("/webhook", async (req, res) => {
   console.log(`📩 [${phone}]: ${text}`);
   const reply = await handleMessage(phone, text);
   res.set("Content-Type", "text/xml");
-  res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Message>${reply}</Message></Response>`);
+  res.send(
+    `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${reply}</Message></Response>`
+  );
 });
 
 app.get("/", (req, res) => res.send("Bot is running! 🚀"));
