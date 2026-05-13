@@ -5,6 +5,7 @@
 
 const express = require("express");
 const axios = require("axios");
+const twilio = require("twilio");
 const app = express();
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
@@ -13,6 +14,10 @@ const CONFIG = {
   WC_URL: process.env.WC_URL,
   WC_KEY: process.env.WC_KEY,
   WC_SECRET: process.env.WC_SECRET,
+  TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
+  TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
+  TWILIO_WHATSAPP_NUMBER: "whatsapp:+14155238886",
+  OWNER_PHONE: process.env.OWNER_PHONE || "+972547970011",
   PORT: process.env.PORT || 3000,
 };
 
@@ -20,6 +25,19 @@ const wooApi = axios.create({
   baseURL: `${CONFIG.WC_URL}/wp-json/wc/v3`,
   auth: { username: CONFIG.WC_KEY, password: CONFIG.WC_SECRET },
 });
+
+async function sendAlertToOwner(customerPhone, message) {
+  try {
+    const client = twilio(CONFIG.TWILIO_ACCOUNT_SID, CONFIG.TWILIO_AUTH_TOKEN);
+    await client.messages.create({
+      from: CONFIG.TWILIO_WHATSAPP_NUMBER,
+      to: `whatsapp:${CONFIG.OWNER_PHONE}`,
+      body: `🔔 *לקוח מבקש נציג!*\n\n📱 מספר: ${customerPhone}\n💬 הודעה: ${message}\n\nענה ללקוח ישירות בוואטסאפ!`
+    });
+  } catch (e) {
+    console.error("Failed to send alert:", e.message);
+  }
+}
 
 async function getOrderStatus(orderId) {
   try {
@@ -110,28 +128,21 @@ async function handleMessage(phone, text) {
 
   if (msg === "5") {
     session.step = "main";
-    return `👨‍💼 *העברה לנציג*\n\nמיד יצרו איתך קשר!\n⏰ שעות פעילות: א׳-ה׳ 9:00-18:00\n\nמחוץ לשעות הפעילות? נחזור אליך בבוקר`;
+    await sendAlertToOwner(phone, text);
+    return `👨‍💼 *העברה לנציג*\n\nקיבלנו את פנייתך! נציג יחזור אליך בהקדם 😊\n⏰ שעות פעילות: א׳-ה׳ 9:00-18:00\n\nמחוץ לשעות הפעילות? נחזור אליך בבוקר`;
   }
 
   return `לא הבנתי 😊\n\n1️⃣ סטטוס הזמנה\n2️⃣ מוצרים וגדלים\n3️⃣ מבצעים\n4️⃣ החזרות\n5️⃣ נציג\n\nשלח 0 לתפריט`;
 }
 
-// Twilio Webhook
 app.post("/webhook", async (req, res) => {
   const phone = req.body.From;
   const text = req.body.Body;
   console.log(`📩 [${phone}]: ${text}`);
-
   const reply = await handleMessage(phone, text);
-
-  // Twilio expects TwiML XML response
   res.set("Content-Type", "text/xml");
-  res.send(`<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Message>${reply}</Message>
-</Response>`);
+  res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Message>${reply}</Message></Response>`);
 });
 
 app.get("/", (req, res) => res.send("Bot is running! 🚀"));
-
 app.listen(CONFIG.PORT, () => console.log(`🚀 Bot running on port ${CONFIG.PORT}`));
