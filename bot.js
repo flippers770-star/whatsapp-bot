@@ -21,6 +21,8 @@ const CONFIG = {
   PORT: process.env.PORT || 3000,
 };
 
+console.log("📞 OWNER_PHONE:", CONFIG.OWNER_PHONE);
+
 const wooApi = axios.create({
   baseURL: `${CONFIG.WC_URL}/wp-json/wc/v3`,
   auth: { username: CONFIG.WC_KEY, password: CONFIG.WC_SECRET },
@@ -41,6 +43,8 @@ async function sendAlertToOwner(customerPhone, message) {
 
 async function getOrderStatus(orderId) {
   try {
+    console.log(`🔍 מחפש הזמנה: ${orderId}`);
+    console.log(`🌐 WC_URL: ${CONFIG.WC_URL}`);
     const { data } = await wooApi.get(`/orders/${orderId}`);
     const statusMap = {
       pending: "ממתינה לתשלום ⏳",
@@ -57,6 +61,7 @@ async function getOrderStatus(orderId) {
     const items = data.line_items.map((i) => `• ${i.name} (x${i.quantity})`).join("\n");
     return `📦 *הזמנה מספר ${orderId}*\n\n👤 שם: ${name}\n📋 סטטוס: ${status}\n💰 סכום: ₪${data.total}\n\n🛍️ פריטים:\n${items}`;
   } catch (e) {
+    console.error(`❌ שגיאה בהזמנה ${orderId}:`, e.message, e.response?.status, JSON.stringify(e.response?.data));
     return `לא מצאתי הזמנה עם מספר *${orderId}*. אנא בדוק שהמספר נכון.`;
   }
 }
