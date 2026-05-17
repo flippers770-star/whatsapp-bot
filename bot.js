@@ -122,7 +122,7 @@ function getSession(phone) {
   return sessions[phone];
 }
 
-const MENU_OPTIONS = ["1", "2", "3", "4", "5"];
+const MENU_OPTIONS = ["1", "2", "3"];
 
 async function handleMessage(phone, text) {
   const session = getSession(phone);
@@ -132,7 +132,7 @@ async function handleMessage(phone, text) {
   // ברכות ותפריט ראשי
   if (greetings.some((w) => msg.toLowerCase().includes(w)) || msg === "0") {
     session.step = "main";
-    return `שלום! 👋 ברוך הבא לחנות נעלי הבית שלנו 🩴\n\nאיך אני יכול לעזור?\n\n1️⃣ בדיקת סטטוס הזמנה\n2️⃣ מוצרים וגדלים\n3️⃣ מחירים ומבצעים\n4️⃣ החזרות והחלפות\n5️⃣ דיבור עם נציג אנושי\n\nשלח את המספר הרצוי`;
+    return `שלום! 👋 ברוך הבא לחנות נעלי הבית שלנו 🩴\n\nאיך אני יכול לעזור?\n\n1️⃣ בדיקת סטטוס הזמנה\n2️⃣ החזרות והחלפות\n3️⃣ דיבור עם נציג אנושי\n\nשלח את המספר הרצוי`;
   }
 
   // זיהוי חכם של מספר הזמנה (4+ ספרות)
@@ -154,32 +154,19 @@ async function handleMessage(phone, text) {
     return await getOrderStatus(orderId);
   }
 
-  // מוצרים וגדלים
-  if (msg === "2" || session.step === "await_product_search") {
-    if (session.step !== "await_product_search") {
-      session.step = "await_product_search";
-      return `👟 *מוצרים וגדלים*\n\nמה אתה מחפש?\n• שם מוצר ספציפי\n• גודל (לדוגמה: 42)\n• הכל לכל הקטלוג`;
-    }
-    session.step = "main";
-    return await getProducts(msg === "הכל" ? "" : msg);
-  }
-
-  // מבצעים
-  if (msg === "3") return await getSaleProducts();
-
   // החזרות והחלפות
-  if (msg === "4") {
-    return `↩️ *מדיניות החזרות והחלפות*\n\n✅ ניתן להחזיר תוך *14 יום* מקבלת המוצר\n✅ המוצר חייב להיות שלם ולא בשימוש\n✅ עם חשבונית / אישור הזמנה\n\n📬 *תהליך:*\n1. שלח תמונה של המוצר\n2. ציין מספר הזמנה וסיבת ההחזרה\n3. נחזור אליך תוך 24 שעות\n\n📞 לשאלות: שלח *5* לנציג`;
+  if (msg === "2") {
+    return `↩️ *מדיניות החזרות והחלפות*\n\n✅ ניתן להחזיר תוך *14 יום* מקבלת המוצר\n✅ המוצר חייב להיות שלם ולא בשימוש\n✅ עם חשבונית / אישור הזמנה\n\n📬 *לביצוע החזרה או החלפה לחץ כאן:*\nhttps://feetfun.co.il/החזרות-והחלפות\n\n📞 לשאלות נוספות: שלח *3* לנציג`;
   }
 
-  // נציג אנושי
-  if (msg === "5") {
+  // נציג אנושי - פנייה ישירה למספר הנייד
+  if (msg === "3") {
     session.step = "main";
     await sendAlertToOwner(phone, text);
-    return `👨‍💼 *העברה לנציג*\n\nקיבלנו את פנייתך! נציג יחזור אליך בהקדם 😊\n⏰ שעות פעילות: א׳-ה׳ 9:00-18:00\n\nמחוץ לשעות הפעילות? נחזור אליך בבוקר`;
+    return `👨‍💼 *נציג אנושי*\n\nלשיחה ישירה עם נציג שלנו:\n📱 *0547970011*\n\n⏰ שעות פעילות: א׳-ה׳ 9:00-18:00\n\nמחוץ לשעות הפעילות? נחזור אליך בבוקר`;
   }
 
-  return `לא הבנתי 😊\n\n1️⃣ סטטוס הזמנה\n2️⃣ מוצרים וגדלים\n3️⃣ מבצעים\n4️⃣ החזרות\n5️⃣ נציג\n\nשלח 0 לתפריט`;
+  return `לא הבנתי 😊\n\n1️⃣ סטטוס הזמנה\n2️⃣ החזרות והחלפות\n3️⃣ נציג אנושי\n\nשלח 0 לתפריט`;
 }
 
 // Webhook verification - Meta דורש זאת
