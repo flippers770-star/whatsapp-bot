@@ -1,51 +1,67 @@
 /**
- * WhatsApp Bot - Twilio version
+ * WhatsApp Bot - Meta Cloud API version
  * חנות נעלי בית - Feet Fun Slippers
  */
 
 const express = require("express");
 const axios = require("axios");
-const twilio = require("twilio");
 const app = express();
-app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
 
 const CONFIG = {
   WC_URL: process.env.WC_URL,
   WC_KEY: process.env.WC_KEY,
   WC_SECRET: process.env.WC_SECRET,
-  TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
-  TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
-  TWILIO_WHATSAPP_NUMBER: "whatsapp:+14155238886",
+  WA_TOKEN: process.env.WA_TOKEN,
+  WA_PHONE_ID: process.env.WA_PHONE_ID,
+  WA_VERIFY_TOKEN: process.env.WA_VERIFY_TOKEN,
   OWNER_PHONE: process.env.OWNER_PHONE || "+972587563770",
   PORT: process.env.PORT || 3000,
 };
 
 console.log("📞 OWNER_PHONE:", CONFIG.OWNER_PHONE);
+console.log("📱 WA_PHONE_ID:", CONFIG.WA_PHONE_ID);
 
 const wooApi = axios.create({
   baseURL: `${CONFIG.WC_URL}/wp-json/wc/v3`,
   auth: { username: CONFIG.WC_KEY, password: CONFIG.WC_SECRET },
 });
 
-async function sendAlertToOwner(customerPhone, message) {
+// שליחת הודעה דרך Meta Cloud API
+async function sendMessage(to, text) {
   try {
-    const client = twilio(CONFIG.TWILIO_ACCOUNT_SID, CONFIG.TWILIO_AUTH_TOKEN);
-    await client.messages.create({
-      from: CONFIG.TWILIO_WHATSAPP_NUMBER,
-      to: `whatsapp:${CONFIG.OWNER_PHONE}`,
-      body: `🔔 *לקוח מבקש נציג!*\n\n📱 מספר: ${customerPhone}\n💬 הודעה: ${message}\n\nענה ללקוח ישירות בוואטסאפ!`,
-    });
+    await axios.post(
+      `https://graph.facebook.com/v19.0/${CONFIG.WA_PHONE_ID}/messages`,
+      {
+        messaging_product: "whatsapp",
+        to: to,
+        type: "text",
+        text: { body: text },
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${CONFIG.WA_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
   } catch (e) {
-    console.error("Failed to send alert:", e.message);
+    console.error("❌ שגיאה בשליחת הודעה:", e.response?.data || e.message);
   }
 }
 
+// התראה לבעלים
+async function sendAlertToOwner(customerPhone, message) {
+  const text = `🔔 *לקוח מבקש נציג!*\n\n📱 מספר: ${customerPhone}\n💬 הודעה: ${message}\n\nענה ללקוח ישירות בוואטסאפ!`;
+  await sendMessage(CONFIG.OWNER_PHONE, text);
+}
+
+// בדיקת סטטוס הזמנה
 async function getOrderStatus(orderId) {
   try {
     console.log(`🔍 מחפש הזמנה: ${orderId}`);
-    console.log(`🌐 WC_URL: ${CONFIG.WC_URL}`);
     const { data } = await wooApi.get(`/orders/${orderId}`);
+    console.log(`✅ נמצאה הזמנה: ${orderId}, סטטוס: ${data.status}`);
     const statusMap = {
       pending: "ממתינה לתשלום ⏳",
       processing: "בעיבוד 🔄",
@@ -66,6 +82,7 @@ async function getOrderStatus(orderId) {
   }
 }
 
+// מוצרים
 async function getProducts(search = "") {
   try {
     const params = { per_page: 6, status: "publish" };
@@ -82,6 +99,7 @@ async function getProducts(search = "") {
   }
 }
 
+// מבצעים
 async function getSaleProducts() {
   try {
     const { data } = await wooApi.get("/products", {
@@ -97,6 +115,7 @@ async function getSaleProducts() {
   }
 }
 
+// ניהול sessions
 const sessions = {};
 function getSession(phone) {
   if (!sessions[phone]) sessions[phone] = { step: "main" };
@@ -116,15 +135,14 @@ async function handleMessage(phone, text) {
     return `שלום! 👋 ברוך הבא לחנות נעלי הבית שלנו 🩴\n\nאיך אני יכול לעזור?\n\n1️⃣ בדיקת סטטוס הזמנה\n2️⃣ מוצרים וגדלים\n3️⃣ מחירים ומבצעים\n4️⃣ החזרות והחלפות\n5️⃣ דיבור עם נציג אנושי\n\nשלח את המספר הרצוי`;
   }
 
-  // ✅ תיקון: זיהוי חכם של מספר הזמנה
-  // אם ההודעה היא מספר של 4+ ספרות ולא אחת מאפשרויות התפריט - כנראה מספר הזמנה
+  // זיהוי חכם של מספר הזמנה (4+ ספרות)
   const isOrderNumber = /^\d{4,}$/.test(msg) && !MENU_OPTIONS.includes(msg);
   if (isOrderNumber) {
     session.step = "main";
     return await getOrderStatus(msg);
   }
 
-  // בדיקת סטטוס הזמנה - תפריט
+  // בדיקת סטטוס הזמנה
   if (msg === "1" || session.step === "await_order_id") {
     if (session.step !== "await_order_id") {
       session.step = "await_order_id";
@@ -164,15 +182,46 @@ async function handleMessage(phone, text) {
   return `לא הבנתי 😊\n\n1️⃣ סטטוס הזמנה\n2️⃣ מוצרים וגדלים\n3️⃣ מבצעים\n4️⃣ החזרות\n5️⃣ נציג\n\nשלח 0 לתפריט`;
 }
 
+// Webhook verification - Meta דורש זאת
+app.get("/webhook", (req, res) => {
+  const mode = req.query["hub.mode"];
+  const token = req.query["hub.verify_token"];
+  const challenge = req.query["hub.challenge"];
+
+  if (mode === "subscribe" && token === CONFIG.WA_VERIFY_TOKEN) {
+    console.log("✅ Webhook verified!");
+    res.status(200).send(challenge);
+  } else {
+    console.error("❌ Webhook verification failed");
+    res.sendStatus(403);
+  }
+});
+
+// קבלת הודעות נכנסות
 app.post("/webhook", async (req, res) => {
-  const phone = req.body.From;
-  const text = req.body.Body;
-  console.log(`📩 [${phone}]: ${text}`);
-  const reply = await handleMessage(phone, text);
-  res.set("Content-Type", "text/xml");
-  res.send(
-    `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${reply}</Message></Response>`
-  );
+  res.sendStatus(200); // Meta דורש תשובה מיידית
+
+  try {
+    const entry = req.body?.entry?.[0];
+    const changes = entry?.changes?.[0];
+    const value = changes?.value;
+    const messages = value?.messages;
+
+    if (!messages || messages.length === 0) return;
+
+    const message = messages[0];
+    const phone = message.from;
+    const text = message.text?.body;
+
+    if (!text) return;
+
+    console.log(`📩 [${phone}]: ${text}`);
+
+    const reply = await handleMessage(phone, text);
+    await sendMessage(phone, reply);
+  } catch (e) {
+    console.error("❌ שגיאה בעיבוד הודעה:", e.message);
+  }
 });
 
 app.get("/", (req, res) => res.send("Bot is running! 🚀"));
